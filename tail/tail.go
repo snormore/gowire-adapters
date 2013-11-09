@@ -66,10 +66,12 @@ func NewTailInputter(conf TailConfig) *TailInputter {
 			in.lines <- line
 		}
 	}()
+	in.finalized = make(chan message.Message, 1024)
 	return &in
 }
 
 func (in TailInputter) Start(t *tomb.Tomb) error {
+	go in.finalizeListener(t)
 	return in.tailer.Read(in.Config.(TailConfig).FilePath, in.Config.(TailConfig).StartEvent, t)
 }
 
@@ -118,7 +120,7 @@ func (in *TailInputter) finalizeListener(t *tomb.Tomb) {
 		select {
 		case msg := <-in.finalized:
 			if math.Mod(float64(msgCounter), float64(in.Config.(TailConfig).LatestFinalizedFlushMod)) == 0.0 && strings.Trim(msg.Id, " \n\r\t") != "" {
-				logger.VerboseDebug("Saving latest finalized message ID %s...", msg.Id)
+				logger.Debug("Saving latest finalized message ID %s...", msg.Id)
 				in.setLatestFinalizedMessageId(msg.Id)
 			}
 			if msg.Id != "" {
